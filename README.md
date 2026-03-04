@@ -36,6 +36,11 @@
 ## 📖 TL;DR
 This work introduces **VasoMIM**, a vascular anatomy-aware self-supervised learning framework designed specifically for X-ray angiogram pre-training. To support this, we curated **XA-170K**, the largest existing X-ray angiogram dataset. VasoMIM is validated on four downstream tasks crucial for X-ray angiogram analysis, demonstrating superior performance.
 
+## ✨ News
+* **2026-02** 💻 We released the code on GitHub.
+* **2026-02** 📝 We posted the journal version of <a href="https://arxiv.org/pdf/2602.11536">VasoMIM</a> on arXiv.
+* **2025-11** 🎉 <a href="https://arxiv.org/pdf/2508.10794">VasoMIM-v1</a> was accepted to AAAI 2026.
+
 ## 🛠️ Method
 <div align="center">
   <img src="src/Fig_VasoMIM.png" width="100%" alt="VasoMIM Framework">
