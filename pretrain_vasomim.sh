@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 JOB_DIR="${SCRIPT_DIR}/checkpoints"
 IMAGENET_DIR="${SCRIPT_DIR}/data"
 NUM_GPUS=1
-BATCH_SIZE_PER_GPU=1024
+BATCH_SIZE_PER_GPU=512
 
 echo "Starting 8-GPU training..."
 echo "Batch size per GPU: ${BATCH_SIZE_PER_GPU}"
