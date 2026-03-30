@@ -128,8 +128,8 @@ def segment_image(input_path: str,
 if __name__ == "__main__":
     border = 20
     percentile = 92.0 # default
-    base_dir = "/home/dsa/vasomim"
-    for dataset in [ "syntax", "cadica", "xcad", "coronarydominance"]:
+    base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+    for dataset in ["syntax", "cadica", "xcad", "coronarydominance"]:
         image_folder = os.path.join(base_dir, dataset)
         mask_folder = os.path.join(base_dir, f"{dataset}_frangi")
 

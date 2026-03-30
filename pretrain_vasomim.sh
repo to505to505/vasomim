@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
-JOB_DIR="/path/to/ckpt/"
-IMAGENET_DIR="/path/to/dataset"
-NUM_GPUS=8
-BATCH_SIZE_PER_GPU=256
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+JOB_DIR="${SCRIPT_DIR}/checkpoints"
+IMAGENET_DIR="${SCRIPT_DIR}/data"
+NUM_GPUS=1
+BATCH_SIZE_PER_GPU=1024
 
 echo "Starting 8-GPU training..."
 echo "Batch size per GPU: ${BATCH_SIZE_PER_GPU}"
@@ -19,7 +20,7 @@ torchrun \
     --master_port 29501 \
     main_pretrain.py \
     --batch_size ${BATCH_SIZE_PER_GPU} \
-    --model mae_vit_base_patch16 \
+    --model mae_vit_small_patch16 \
     --mask_ratio 0.50 \
     --norm_pix_loss \
     --epochs 800 \

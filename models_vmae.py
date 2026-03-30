@@ -3,6 +3,7 @@
 # DeiT: https://github.com/facebookresearch/deit
 # MAE: https://github.com/facebookresearch/mae
 
+import os
 import torch
 
 from segmodel.unext.model import UNext_S
@@ -58,8 +59,8 @@ class MaskedAutoencoderViT(nn.Module):
         self.seg_model = UNext_S(num_classes=num_classes)
         for p in self.seg_model.parameters():
             p.requires_grad = False
-        state_dict = torch.load(r"/path/to/pretrained/unext_s.pth", 
-                                map_location='cpu')
+        _unext_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "segmodel", "unext.pth")
+        state_dict = torch.load(_unext_path, map_location='cpu')
         self.seg_model.load_state_dict(state_dict)
         # --------------------------------------------------------------------------
 
@@ -299,6 +300,14 @@ class MaskedAutoencoderViT(nn.Module):
         return loss, rec_loss.item(), cycle_loss.item(), pred, mask
 
 
+def mae_vit_small_patch16_dec512d8b(**kwargs):
+    model = MaskedAutoencoderViT(
+        patch_size=16, embed_dim=384, depth=12, num_heads=6,
+        decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
+        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    return model
+
+
 def mae_vit_base_patch16_dec512d8b(**kwargs):
     model = MaskedAutoencoderViT(
         patch_size=16, embed_dim=768, depth=12, num_heads=12,
@@ -323,6 +332,7 @@ def mae_vit_huge_patch14_dec512d8b(**kwargs):
     return model
 
 
+mae_vit_small_patch16 = mae_vit_small_patch16_dec512d8b  # decoder: 512 dim, 8 blocks
 mae_vit_base_patch16 = mae_vit_base_patch16_dec512d8b  # decoder: 512 dim, 8 blocks
 mae_vit_large_patch16 = mae_vit_large_patch16_dec512d8b  # decoder: 512 dim, 8 blocks
 mae_vit_huge_patch14 = mae_vit_huge_patch14_dec512d8b  # decoder: 512 dim, 8 blocks

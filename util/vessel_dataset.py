@@ -14,7 +14,7 @@ from torchvision.transforms import (
 
 def create_image_mask_path(base_path, dataset_name):
     image_path = os.path.join(base_path, dataset_name)
-    mask_path = os.path.join(base_path, dataset_name + "_filter_92")
+    mask_path = os.path.join(base_path, dataset_name + "_frangi")
     item_list = os.listdir(image_path)
     image_item = [os.path.join(image_path, i) for i in item_list]
     mask_item = [os.path.join(mask_path, i) for i in item_list]
