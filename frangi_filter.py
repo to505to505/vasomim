@@ -3,7 +3,9 @@ import logging
 import warnings
 import numpy as np
 import cv2
-from skimage import io, filters
+import cupy as cp
+from cupyx.scipy.ndimage import gaussian_filter as gpu_gaussian_filter
+from cupyx.scipy.ndimage import label as gpu_label
 from PIL import Image
 
 
@@ -31,10 +33,35 @@ def save_image(img: np.ndarray, path: str) -> None:
 
 def sato_filter(image: np.ndarray, sigmas: list = [1, 2, 3, 4], border: int = 3) -> np.ndarray:
     """
-    Apply Sato Hessian-based vesselness filter and zero out borders.
+    Apply Sato Hessian-based vesselness filter on GPU and zero out borders.
+    Reimplements skimage.filters.sato(black_ridges=True, mode='reflect') via CuPy.
     """
-    sato = filters.sato(image.astype(np.uint8), sigmas=sigmas, black_ridges=True, mode="reflect", cval=0)
-    result = sato.astype(np.uint8)
+    img_gpu = cp.asarray(image.astype(np.float64))
+    filtered_max = cp.zeros_like(img_gpu)
+
+    for sigma in sigmas:
+        # Hessian matrix elements (scale-normalized)
+        Hxx = gpu_gaussian_filter(img_gpu, sigma=sigma, order=[2, 0], mode='reflect') * (sigma ** 2)
+        Hxy = gpu_gaussian_filter(img_gpu, sigma=sigma, order=[1, 1], mode='reflect') * (sigma ** 2)
+        Hyy = gpu_gaussian_filter(img_gpu, sigma=sigma, order=[0, 2], mode='reflect') * (sigma ** 2)
+
+        # Eigenvalues of 2x2 symmetric matrix [[Hxx, Hxy],[Hxy, Hyy]]
+        tmp = cp.sqrt(((Hxx - Hyy) / 2.0) ** 2 + Hxy ** 2)
+        mean_val = (Hxx + Hyy) / 2.0
+        l1 = mean_val - tmp
+        l2 = mean_val + tmp
+
+        # Pick eigenvalue with largest absolute value
+        e_large = cp.where(cp.abs(l1) > cp.abs(l2), l1, l2)
+
+        # black_ridges=True: negate
+        e_large = -e_large
+
+        # Sato tubeness: max(0, largest eigenvalue)
+        filtered = cp.maximum(e_large, 0)
+        filtered_max = cp.maximum(filtered_max, filtered)
+
+    result = cp.asnumpy(filtered_max).astype(np.uint8)
     # mask borders
     h, w = result.shape
     result[:border, :] = 0
@@ -46,43 +73,41 @@ def sato_filter(image: np.ndarray, sigmas: list = [1, 2, 3, 4], border: int = 3)
 
 def threshold_image(image: np.ndarray, percentile: float = 92.0) -> np.ndarray:
     """
-    Threshold image by percentile, zeroing values below threshold.
+    Threshold image by percentile on GPU, zeroing values below threshold.
     """
-    thresh_val = np.percentile(image, percentile)
-    mask = np.where(image >= thresh_val, image, 0)
-    return mask
+    img_gpu = cp.asarray(image)
+    thresh_val = cp.percentile(img_gpu, percentile)
+    mask = cp.where(img_gpu >= thresh_val, img_gpu, cp.zeros_like(img_gpu))
+    return cp.asnumpy(mask)
 
 
 def region_grow(img: np.ndarray, seed: tuple = None) -> np.ndarray:
     """
-    Grow region from a seed point on nonzero pixels.
-    If seed is None, uses the maximum-intensity pixel.
-    Returns a binary mask of the grown region.
+    Find the connected component of nonzero pixels containing the seed (or
+    the brightest pixel if seed is None) using GPU-accelerated connected
+    components labeling.  Equivalent to the original flood-fill region grow.
     """
-    if seed is None:
-        if np.any(img):
-            idx = np.unravel_index(np.argmax(img), img.shape)
-            seed = (idx[0], idx[1])
+    img_gpu = cp.asarray(img)
+    binary = (img_gpu > 0).astype(cp.int32)
+    labeled, num_features = gpu_label(binary)
+
+    if num_features == 0:
+        return np.zeros_like(img, dtype=np.uint8)
+
+    if seed is not None:
+        seed_label = int(labeled[seed[0], seed[1]])
+    else:
+        if cp.any(img_gpu):
+            max_idx = int(cp.argmax(img_gpu))
+            seed_label = int(labeled.ravel()[max_idx])
         else:
             return np.zeros_like(img, dtype=np.uint8)
 
-    visited = np.zeros_like(img, dtype=bool)
-    mask = np.zeros_like(img, dtype=np.uint8)
-    stack = [seed]
-    dirs = [(1,0), (-1,0), (0,1), (0,-1)]
-    while stack:
-        x, y = stack.pop()
-        if not (0 <= x < img.shape[0] and 0 <= y < img.shape[1]):
-            continue
-        if visited[x,y] or img[x,y] == 0:
-            continue
-        visited[x,y] = True
-        mask[x,y] = 255
-        for dx, dy in dirs:
-            nx, ny = x+dx, y+dy
-            if 0 <= nx < img.shape[0] and 0 <= ny < img.shape[1] and not visited[nx,ny] and img[nx,ny] > 0:
-                stack.append((nx,ny))
-    return mask
+    if seed_label == 0:
+        return np.zeros_like(img, dtype=np.uint8)
+
+    mask = (labeled == seed_label).astype(cp.uint8) * 255
+    return cp.asnumpy(mask)
 
 
 def segment_image(input_path: str,
@@ -103,13 +128,14 @@ def segment_image(input_path: str,
 if __name__ == "__main__":
     border = 20
     percentile = 92.0 # default
-    for dataset in ["cadica", "syntax", "xcad", "coronarydominance"]:
-        image_folder = fr"/path/to/dataset/{dataset}"
-        mask_folder = fr"/path/to/dataset/{dataset}_frangi"
+    base_dir = "/home/dsa/vasomim"
+    for dataset in [ "syntax", "cadica", "xcad", "coronarydominance"]:
+        image_folder = os.path.join(base_dir, dataset)
+        mask_folder = os.path.join(base_dir, f"{dataset}_frangi")
 
         os.makedirs(mask_folder, exist_ok=True)
 
-        image_items = os.listdir(image_folder)
+        image_items = [f for f in os.listdir(image_folder) if f.endswith('.png')]
 
         from tqdm import tqdm
         iterator = tqdm(image_items, desc=f"Processing {dataset}")
